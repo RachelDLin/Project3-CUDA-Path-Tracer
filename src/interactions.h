@@ -40,7 +40,35 @@ __host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
  *
  * You may need to change the parameter list for your purposes!
  */
+
+__device__ void coordinateSystem(const glm::vec3& v1, glm::vec3& v2, glm::vec3& v3);
+
+__device__ glm::mat3 LocalToWorld(glm::vec3 nor);
+
+__device__ glm::mat3 WorldToLocal(glm::vec3 nor);
+
+__device__ glm::vec3 squareToDiskConcentric(glm::vec2 xi);
+
+__device__ glm::vec3 squareToHemisphereCosine(glm::vec2 xi);
+
+__device__ float squareToHemisphereCosinePDF(glm::vec3 sample);
+
+__device__ glm::vec3 f_diffuse(glm::vec3 albedo);
+
+__device__ glm::vec3 Sample_f_diffuse(const glm::vec3 albedo,
+    const glm::vec3 nor,
+    glm::vec3& wiW,
+    float& pdf,
+    thrust::default_random_engine& rng);
+
 __host__ __device__ void scatterRay(
+    PathSegment& pathSegment,
+    glm::vec3 intersect,
+    glm::vec3 normal,
+    const Material& m,
+    thrust::default_random_engine& rng);
+
+__device__ void scatterRay_diffuse(
     PathSegment& pathSegment,
     glm::vec3 intersect,
     glm::vec3 normal,
