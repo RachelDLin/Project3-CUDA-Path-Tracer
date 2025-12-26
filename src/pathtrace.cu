@@ -6,6 +6,8 @@
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
 #include <thrust/remove.h>
+#include <thrust/device_ptr.h>
+#include <thrust/sort.h>
 
 #include "sceneStructs.h"
 #include "scene.h"
@@ -16,6 +18,8 @@
 #include "interactions.h"
 
 #define ERRORCHECK 1
+#define ENABLE_STREAMCOMPACTION 1
+#define ENABLE_SORTBYMATERIAL 0
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
@@ -244,7 +248,11 @@ __global__ void computeIntersections(
     }
 }
 
-// LOOK: "fake" shader demonstrating what you might do with the info in
+/**
+* shading kernels
+*/
+
+// "fake" shader demonstrating what you might do with the info in
 // a ShadeableIntersection, as well as how to use thrust's random number
 // generator. Observe that since the thrust random number generator basically
 // adds "noise" to the iteration, the image should start off noisy and get
@@ -297,7 +305,6 @@ __global__ void shadeFakeMaterial(
         }
     }
 }
-
 
 __global__ void shadeDiffuseMaterial(
     int iter,
@@ -369,6 +376,10 @@ __global__ void shadeDiffuseMaterial(
     }
 }
 
+/*
+* kernel to construct img from each ray's accumulated color
+* (obsolete w/ stream compaction; image now accumulates color every bounce in shadeDiffuseMaterial)
+*/
 // Add the colored rays to the image buffer
 // i.e. add the current iteration's  output to the overall image
 __global__ void finalGather(int nPaths, glm::vec3* image, const PathSegment* iterationPaths)
@@ -439,7 +450,10 @@ __global__ void scatter(const int nPaths, const int* flags, const int* scan, con
     }
 }
 
-
+/*
+* misc. helper kernels
+*/
+// kernel to find next power of two (rounded up)
 __host__ __device__ int nextPowerOfTwo(int x) {
     x--;
     x |= x >> 1;
@@ -448,6 +462,19 @@ __host__ __device__ int nextPowerOfTwo(int x) {
     x |= x >> 8;
     x |= x >> 16;
     return x + 1;
+}
+
+/*
+* material sorting
+*/
+// kernel to extract material ids
+__global__ void extractMaterialIds(int num_paths, const ShadeableIntersection* intersections, int* materialIds) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < num_paths) {
+        // if intersection is valid, store materialId; otherwise put -1
+        materialIds[idx] = (intersections[idx].t > 0.0f) ? intersections[idx].materialId : -1;
+    }
 }
 
 /**
@@ -511,19 +538,34 @@ void pathtrace(uchar4* pbo, int frame, int iter)
     int num_paths_padded = nextPowerOfTwo(num_paths);
 
     // --- PathSegment Tracing Stage ---
-    // Shoot ray into scene, bounce between objects, push shading chunks
+    
+    int* dev_materialIds;
     int* dev_flags;
     int* dev_scan;
     PathSegment* dev_paths_compact;
+    cudaMalloc(&dev_materialIds, num_paths * sizeof(int));
     cudaMalloc(&dev_flags, num_paths * sizeof(int));
     cudaMalloc(&dev_scan, num_paths_padded * sizeof(int));
     cudaMalloc(&dev_paths_compact, num_paths * sizeof(PathSegment));
 
+    // Shoot ray into scene, bounce between objects, push shading chunks
     // bounce traceDepth number of times
     while (depth < traceDepth)
     {
         // clean shading chunks
         cudaMemset(dev_intersections, 0, num_paths * sizeof(ShadeableIntersection));
+
+        // sort the rays/path segments so that rays interacting w/ the same material are contiguous in memory before shading
+        if (ENABLE_SORTBYMATERIAL) {
+            // get material ids
+            dim3 numBlocks = (num_paths + blockSize1d - 1) / blockSize1d;
+            extractMaterialIds << <numBlocks, blockSize1d >> > (num_paths, dev_intersections, dev_materialIds);
+
+            // sort by material id
+            thrust::device_ptr<int> keys(dev_materialIds);
+            thrust::device_ptr<PathSegment> values(dev_paths);
+            thrust::sort_by_key(keys, keys + num_paths, values);
+        }
 
         // tracing (compute scene intersection pts)
         dim3 numblocksPathSegmentTracing = (num_paths + blockSize1d - 1) / blockSize1d;
@@ -560,9 +602,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         
         // --- stream compaction ---
 
-        bool enableStreamCompaction = true;
-
-        if (enableStreamCompaction) {
+        if (ENABLE_STREAMCOMPACTION) {
             // flags (stream compaction to remove terminated rays)
             dim3 numFlagBlocks = (num_paths + blockSize1d - 1) / blockSize1d;
             computeFlags << <numFlagBlocks, blockSize1d >> > (num_paths, dev_flags, dev_paths);
