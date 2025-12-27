@@ -278,6 +278,58 @@ __device__ float fresnelSchlick(const float cosTheta, const float ior) {
     return r0 + (1.0f - r0) * powf(1.0f - cosTheta, 5.0f);
 }
 
+// GGX importance sampling - pick a microfacet that is likely to exist and see where it reflects light
+__device__ glm::vec3 ImportanceSampleGGX(glm::vec2 Xi, glm::vec3 N, float roughness) {
+    float a = roughness * roughness;
+
+    float phi = 2.f * PI * Xi.x;
+    float cosTheta = sqrt((1.f - Xi.y) / (1.f + (a * a - 1.f) * Xi.y));
+    float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+
+    // convert from spherical coords to cartesian coords
+    // to get microfacet surface normal used to reflect wo in direction of wi
+    glm::vec3 wh;
+    wh.x = cos(phi) * sinTheta;
+    wh.y = sin(phi) * sinTheta;
+    wh.z = cosTheta;
+
+    // from tangent-space vector to world-space sample vector
+    glm::vec3 up = abs(N.z) < 0.999 ? glm::vec3(0.0, 0.0, 1.0) : glm::vec3(1.0, 0.0, 0.0);
+    glm::vec3 tangent = normalize(cross(up, N));
+    glm::vec3 bitangent = cross(N, tangent);
+
+    glm::vec3 sampleVec = tangent * wh.x + bitangent * wh.y + N * wh.z;
+    return glm::normalize(sampleVec);
+}
+
+// fraction of microfacets that have normal wh
+__device__ float GGX(glm::vec3 normal, glm::vec3 wh, float roughness) {
+    float a2 = powf(roughness, 4);
+
+    // angle btwn normal and halfway vector wh
+    float angle = dot(normal, wh);
+
+    // parameter for controlling distribution/spread of microfacet distribution
+    float spread = a2 - 1.f;
+
+    ////// Compute microfacet visibility
+    // Modulate by distribution to control the sharpness of specular reflection based
+    // on roughness
+    // Offset to make sure that microfacet distribution is non-zero when surface is
+    // nearly perpendicular to reflection direction
+    float microfacetVisibility = powf(angle, 2) * spread + 1.f;
+    return a2 / (PI * powf(microfacetVisibility, 2));
+}
+
+// find fraction of microfacets that are visible from direction V
+__device__ float GGX_G1(float NdotV, float roughness) {
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float denom = NdotV + sqrt(a2 + (1.0f - a2) * NdotV * NdotV);
+    return 2.0f * NdotV / denom;
+}
+
+
 // "fake" shader demonstrating what you might do with the info in
 // a ShadeableIntersection, as well as how to use thrust's random number
 // generator. Observe that since the thrust random number generator basically
@@ -405,7 +457,7 @@ __global__ void shadeMaterial(
                 else {
                     // refract
                     glm::vec3 refracted = glm::refract(I, N, eta);
-
+                        
                     // total internal reflection
                     if (glm::length(refracted) < 1e-3f) {
                         ray.direction = glm::reflect(I, N);
@@ -421,7 +473,89 @@ __global__ void shadeMaterial(
 
                 return;
 
-            } else {
+            }
+            else if (material.roughness < 0.02f && glm::length(material.specular) > 0.0f) {
+                // perfectly smooth mirror reflection
+                // use for low roughness; single-sample GGX fails on low roughness because likelihood of hitting a light is low
+
+                glm::vec3 N = intersection.surfaceNormal;
+
+                if (dot(ray.direction, N) > 0.0f) {
+                    N = normalize(-N);
+                }
+
+                // towards camera
+                glm::vec3 wo = normalize(ray.direction);
+
+                // reflected direction
+                glm::vec3 wi = reflect(wo, N);
+
+                // update ray
+                ray.direction = normalize(wi);
+                ray.origin = intersectionPoint + 0.001f * ray.direction;
+
+                // no diffuse contribution; low roughness surfaces don't scatter light diffusely
+                path.color *= material.specular;
+                path.remainingBounces--;
+            }
+            else if (material.roughness > 0.0f && material.roughness < 1.0f) {
+                // GGX microfacet reflection
+                glm::vec3 N = intersection.surfaceNormal;
+
+                // towards camera
+                glm::vec3 wo = -ray.direction;
+
+                // sample microfacet normal
+                thrust::uniform_real_distribution<float> u01(0.0f, 1.0f);
+                glm::vec2 Xi(u01(rng), u01(rng));
+
+                glm::vec3 wh = ImportanceSampleGGX(Xi, N, materialRoughness);
+
+                // reflect wo about wh to get wi
+                glm::vec3 wi = normalize(glm::reflect(-wo, wh));
+
+                // compute BRDF term
+                float NdotL = glm::max(dot(N, wi), 0.f);
+                float NdotV = glm::max(dot(N, wo), 0.f);
+                float NdotH = glm::max(dot(N, wh), 0.f);
+                float VdotH = glm::max(dot(wh, wo), 0.f);
+                
+                // 
+                if (NdotL <= 0.f || NdotV <= 0.f) {
+                    path.remainingBounces = 0;
+                    return;
+                }
+
+                // GGX terms
+                float D = GGX(N, wh, materialRoughness);
+                float G = GGX_G1(NdotL, materialRoughness) * GGX_G1(NdotV, materialRoughness);
+
+                // dielectric fresnel
+                float F = fresnelSchlick(VdotH, glm::max(glm::max(material.specular.r, material.specular.g), material.specular.b));
+
+                // BRDFs
+                glm::vec3 specBRDF = material.specular * (D * G * F) / (4.f * NdotL * NdotV);
+                glm::vec3 diffBRDF = material.color / PI;
+
+                // pdf for GGX reflection
+                float pdf = D * NdotH / (4.f * VdotH) + 0.0001;
+
+                // update ray
+                ray.direction = wi;
+                ray.origin = intersectionPoint + 0.001f * wi;
+
+                // update path color
+                if (glm::length(material.color) > 0.f) {
+                    // if dielectric
+                    path.color *= (specBRDF + diffBRDF) * NdotL / pdf;
+                }
+                else {
+                    // if metallic
+                    path.color *= material.specular;
+                }
+                path.remainingBounces--;
+            }
+            else {
 
                 // scatter ray
                 scatterRay_diffuse(path,
@@ -445,7 +579,7 @@ __global__ void shadeMaterial(
         }
 
         // Russian roulette path termination
-        if (ENABLE_RUSSIANROULETTETERMINATION) {
+        #if ENABLE_RUSSIANROULETTETERMINATION
 
             if (path.remainingBounces < maxIters - 2) {
                 float p = glm::clamp(
@@ -463,7 +597,7 @@ __global__ void shadeMaterial(
 
                 path.color /= p;
             }
-        }
+        #endif
         
         
 
@@ -562,15 +696,12 @@ __host__ __device__ int nextPowerOfTwo(int x) {
 /*
 * material sorting
 */
-// kernel to extract material ids
-__global__ void extractMaterialIds(int num_paths, const ShadeableIntersection* intersections, int* materialIds) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (idx < num_paths) {
-        // if intersection is valid, store materialId; otherwise put -1
-        materialIds[idx] = (intersections[idx].t > 0.0f) ? intersections[idx].materialId : -1;
+struct CompareMaterial {
+    __host__ __device__ bool operator()(const ShadeableIntersection& i1, const ShadeableIntersection& i2)
+    {
+        return i1.materialId < i2.materialId;
     }
-}
+};
 
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
@@ -650,18 +781,6 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         // clean shading chunks
         cudaMemset(dev_intersections, 0, num_paths * sizeof(ShadeableIntersection));
 
-        // sort the rays/path segments so that rays interacting w/ the same material are contiguous in memory before shading
-        if (ENABLE_SORTBYMATERIAL) {
-            // get material ids
-            dim3 numBlocks = (num_paths + blockSize1d - 1) / blockSize1d;
-            extractMaterialIds << <numBlocks, blockSize1d >> > (num_paths, dev_intersections, dev_materialIds);
-
-            // sort by material id
-            thrust::device_ptr<int> keys(dev_materialIds);
-            thrust::device_ptr<PathSegment> values(dev_paths);
-            thrust::sort_by_key(keys, keys + num_paths, values);
-        }
-
         // tracing (compute scene intersection pts)
         dim3 numblocksPathSegmentTracing = (num_paths + blockSize1d - 1) / blockSize1d;
         computeIntersections << <numblocksPathSegmentTracing, blockSize1d >> > (
@@ -674,6 +793,16 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             );
         checkCUDAError("compute intersections");
         cudaDeviceSynchronize();
+
+        // sort the rays/path segments so that rays interacting w/ the same material are contiguous in memory before shading
+        #if ENABLE_SORTBYMATERIAL
+
+            // sort by material id
+            thrust::device_ptr<ShadeableIntersection> dev_intersections_ptr(dev_intersections);
+            thrust::device_ptr<PathSegment> dev_paths_ptr(dev_paths);
+            thrust::stable_sort_by_key(dev_intersections_ptr, dev_intersections_ptr + num_paths, dev_paths_ptr, CompareMaterial());
+        #endif
+
 
         // TODO:
         // --- Shading Stage ---
@@ -698,7 +827,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         
         // --- stream compaction ---
 
-        if (ENABLE_STREAMCOMPACTION) {
+        #if ENABLE_STREAMCOMPACTION
             // flags (stream compaction to remove terminated rays)
             dim3 numFlagBlocks = (num_paths + blockSize1d - 1) / blockSize1d;
             computeFlags << <numFlagBlocks, blockSize1d >> > (num_paths, dev_flags, dev_paths);
@@ -754,7 +883,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
             // swap buffers
             std::swap(dev_paths, dev_paths_compact);
-        }
+        #endif
 
         printf("depth: %d, num paths: %d\n", depth, num_paths);
         

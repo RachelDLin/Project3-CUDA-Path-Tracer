@@ -103,8 +103,6 @@ __device__ glm::vec3 squareToDiskConcentric(glm::vec2 xi) {
 }
 
 __device__ glm::vec3 squareToHemisphereCosine(glm::vec2 xi) {
-    float xi1 = xi.x;
-    float xi2 = xi.y;
 
     // mapping to disk (polar coords)
     glm::vec3 diskSample = squareToDiskConcentric(xi);
