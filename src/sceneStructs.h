@@ -45,6 +45,7 @@ struct Material
     float hasRefractive;
     float indexOfRefraction;
     float emittance;
+    float roughness;
 };
 
 struct Camera

@@ -26,7 +26,17 @@
         {
             "TYPE":"Specular",
             "RGB":[0.98, 0.98, 0.98],
-            "ROUGHNESS":0.0
+            "ROUGHNESS":0.0,
+	    "SPECULAR_COLOR":[0.02, 0.02, 0.02],
+	    "SPECULAR_EXP":10
+        }, 
+	"specular_mirror":
+        {
+            "TYPE":"Specular",
+            "RGB":[0.0, 0.0, 0.0],
+            "ROUGHNESS":0.0,
+	    "SPECULAR_COLOR":[0.8, 0.8, 0.8],
+	    "SPECULAR_EXP":200
         }, 
 	"glass":
 	{

@@ -87,8 +87,7 @@ static Geom* dev_geoms = NULL;
 static Material* dev_materials = NULL;
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
-// TODO: static variables for device memory, any extra info you need, etc
-// ...
+
 
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
@@ -333,7 +332,7 @@ __global__ void shadeFakeMaterial(
     }
 }
 
-__global__ void shadeDiffuseMaterial(
+__global__ void shadeMaterial(
     int iter,
     int maxIters,
     int num_paths,
@@ -360,6 +359,7 @@ __global__ void shadeDiffuseMaterial(
             // get material properties
             Material material = materials[intersection.materialId];
             glm::vec3 materialColor = material.color;
+            float materialRoughness = material.roughness;
 
             // get ray
             Ray& ray = path.ray;
@@ -684,7 +684,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         // TODO: compare between directly shading the path segments and shading
         // path segments that have been reshuffled to be contiguous in memory.
 
-        shadeDiffuseMaterial << <numblocksPathSegmentTracing, blockSize1d >> > (
+        shadeMaterial << <numblocksPathSegmentTracing, blockSize1d >> > (
             iter,
             traceDepth,
             num_paths,
