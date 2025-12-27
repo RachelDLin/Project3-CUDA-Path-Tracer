@@ -399,7 +399,6 @@ __global__ void shadeDiffuseMaterial(
                 if (u01(rng) < Fr) {
                     // reflect
                     ray.direction = glm::reflect(I, N);
-                    path.color *= 1.0f / Fr;
                 }
                 else {
                     // refract
@@ -412,7 +411,6 @@ __global__ void shadeDiffuseMaterial(
                     else {
                         ray.direction = refracted;
                     }
-                    path.color *= 1.0f / (1.0f - Fr);
                 }
 
                 ray.origin = intersectionPoint + 0.001f * ray.direction;
