@@ -438,6 +438,7 @@ void runCuda()
         cam.position = cameraPosition;
         cameraPosition += cam.lookAt;
         cam.position = cameraPosition;
+        cam.focalDistance = glm::length(cam.lookAt - cam.position);
         camchanged = false;
     }
 

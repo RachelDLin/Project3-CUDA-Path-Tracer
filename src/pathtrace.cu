@@ -157,20 +157,37 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         int index = x + (y * cam.resolution.x);
         PathSegment& segment = pathSegments[index];
 
-        segment.ray.origin = cam.position;
-        segment.color = glm::vec3(1.0f, 1.0f, 1.0f);
-
         // stochastic sampled antialiasing by jittering the ray
         thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
         thrust::uniform_real_distribution<float> u01(0, 1);
         float jitterX = u01(rng) - 0.5f;
         float jitterY = u01(rng) - 0.5f;
 
-        // convert pxl coord to world space ray
-        segment.ray.direction = glm::normalize(cam.view
+        // pxl coord on camera plane in world space
+        glm::vec3 pixelPoint = glm::normalize(cam.view
             - cam.right * cam.pixelLength.x * ((float)x + jitterX - (float)cam.resolution.x * 0.5f)
             - cam.up * cam.pixelLength.y * ((float)y + jitterY - (float)cam.resolution.y * 0.5f)
         );
+
+        glm::vec3 origin = cam.position;
+        if (cam.aperture > 0.0f) {
+            // sample point on lens (w/in aperture radius)
+            float r = cam.aperture * sqrt(u01(rng));
+            float theta = 2.0f * PI * u01(rng);
+            glm::vec3 lensOffset = r * (cos(theta) * cam.right + sin(theta) * cam.up);
+
+            origin += lensOffset;
+
+            // compute focus point on focal plane
+            glm::vec3 focusPoint = cam.position + pixelPoint * cam.focalDistance;
+
+            // new ray direction
+            pixelPoint = glm::normalize(focusPoint - origin);
+        }
+
+        segment.ray.origin = origin;
+        segment.ray.direction = glm::normalize(pixelPoint);
+        segment.color = glm::vec3(1.f);
 
         segment.pixelIndex = index;
         segment.remainingBounces = traceDepth;

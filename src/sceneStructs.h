@@ -57,6 +57,11 @@ struct Camera
     glm::vec3 right;
     glm::vec2 fov;
     glm::vec2 pixelLength;
+
+    // aperture radius
+    float aperture = 0.1f;
+    // distance at which objects are perfectly in focus
+    float focalDistance = 10.0f;
 };
 
 struct RenderState
