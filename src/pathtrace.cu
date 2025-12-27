@@ -20,6 +20,7 @@
 #define ERRORCHECK 1
 #define ENABLE_STREAMCOMPACTION 1
 #define ENABLE_SORTBYMATERIAL 0
+#define ENABLE_RUSSIANROULETTETERMINATION 1
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
@@ -334,6 +335,7 @@ __global__ void shadeFakeMaterial(
 
 __global__ void shadeDiffuseMaterial(
     int iter,
+    int maxIters,
     int num_paths,
     ShadeableIntersection* shadeableIntersections,
     PathSegment* pathSegments,
@@ -350,11 +352,11 @@ __global__ void shadeDiffuseMaterial(
             return;
         }
 
+        // Set up the RNG
+        thrust::default_random_engine rng = makeSeededRandomEngine(iter, idx, path.remainingBounces);
+
         if (intersection.t > 0.0f) // if the intersection exists...
         {
-            // Set up the RNG
-            thrust::default_random_engine rng = makeSeededRandomEngine(iter, idx, path.remainingBounces);
-
             // get material properties
             Material material = materials[intersection.materialId];
             glm::vec3 materialColor = material.color;
@@ -416,6 +418,7 @@ __global__ void shadeDiffuseMaterial(
                 ray.origin = intersectionPoint + 0.001f * ray.direction;
                 path.color *= materialColor;
                 path.remainingBounces--;
+
                 return;
 
             } else {
@@ -440,6 +443,29 @@ __global__ void shadeDiffuseMaterial(
             path.remainingBounces = 0;
             path.color = glm::vec3(0.0f);
         }
+
+        // Russian roulette path termination
+        if (ENABLE_RUSSIANROULETTETERMINATION) {
+
+            if (path.remainingBounces < maxIters - 2) {
+                float p = glm::clamp(
+                    glm::max(path.color.r, glm::max(path.color.g, path.color.b)),
+                    0.05f,
+                    1.0f
+                );
+
+                thrust::uniform_real_distribution<float> u01(0.0f, 1.0f);
+
+                if (u01(rng) > p) {
+                    path.remainingBounces = 0;
+                    return;
+                }
+
+                path.color /= p;
+            }
+        }
+        
+        
 
         // pathSegments[idx].color = 0.5f * (intersection.surfaceNormal + glm::vec3(1.0f));
     }
@@ -660,6 +686,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
         shadeDiffuseMaterial << <numblocksPathSegmentTracing, blockSize1d >> > (
             iter,
+            traceDepth,
             num_paths,
             dev_intersections,
             dev_paths,
