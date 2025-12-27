@@ -30,6 +30,7 @@ void checkCUDAErrorFn(const char* msg, const char* file, int line)
     cudaError_t err = cudaGetLastError();
     if (cudaSuccess == err)
     {
+
         return;
     }
 
@@ -159,13 +160,13 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         segment.ray.origin = cam.position;
         segment.color = glm::vec3(1.0f, 1.0f, 1.0f);
 
-        // antialiasing by jittering the ray
+        // stochastic sampled antialiasing by jittering the ray
         thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
         thrust::uniform_real_distribution<float> u01(0, 1);
         float jitterX = u01(rng) - 0.5f;
         float jitterY = u01(rng) - 0.5f;
 
-        // convert pxl ocord to world space ray
+        // convert pxl coord to world space ray
         segment.ray.direction = glm::normalize(cam.view
             - cam.right * cam.pixelLength.x * ((float)x + jitterX - (float)cam.resolution.x * 0.5f)
             - cam.up * cam.pixelLength.y * ((float)y + jitterY - (float)cam.resolution.y * 0.5f)
@@ -252,6 +253,14 @@ __global__ void computeIntersections(
 * shading kernels
 */
 
+// fresnel helper
+__device__ float fresnelSchlick(const float cosTheta, const float ior) {
+    // assume air; n1 = 1.0, n2 = ior
+    float r0 = (1.0f - ior) / (1.0f + ior);
+    r0 = r0 * r0;
+    return r0 + (1.0f - r0) * powf(1.0f - cosTheta, 5.0f);
+}
+
 // "fake" shader demonstrating what you might do with the info in
 // a ShadeableIntersection, as well as how to use thrust's random number
 // generator. Observe that since the thrust random number generator basically
@@ -333,6 +342,12 @@ __global__ void shadeDiffuseMaterial(
             Material material = materials[intersection.materialId];
             glm::vec3 materialColor = material.color;
 
+            // get ray
+            Ray& ray = path.ray;
+
+            // compute intersection point
+            glm::vec3 intersectionPoint = ray.origin + ray.direction * intersection.t;
+
             // If the material indicates that the object was a light, "light" the ray
             if (material.emittance > 0.0f) {
 
@@ -344,12 +359,51 @@ __global__ void shadeDiffuseMaterial(
                 image[path.pixelIndex] += path.color;
                 return;
             }
-            else {
-                // get ray
-                Ray& ray = path.ray;
+            else if (material.hasRefractive > 0.0f) {
 
-                // compute intersection point
-                glm::vec3 intersectionPoint = ray.origin + ray.direction * intersection.t;
+                // incoming ray direction
+                glm::vec3 I = glm::normalize(ray.direction);
+                
+                // get intersection normal
+                glm::vec3 N = intersection.surfaceNormal;
+
+                // refract if incoming ray dir is > 90 degrees away from surface normal
+                bool entering = glm::dot(I, N) < 0.0f;
+                float eta = entering ? (1.0f / material.indexOfRefraction) : material.indexOfRefraction;
+                N = entering ? N : -N;
+
+                float cosTheta = glm::clamp(-glm::dot(I, N), 0.0f, 1.0f);
+                float ior = material.indexOfRefraction;
+                float Fr = fresnelSchlick(cosTheta, entering ? ior : (1.0f / ior));
+
+                // decide if ray reflects or refracts
+                thrust::uniform_real_distribution<float> u01(0.0f, 1.0f);
+
+                if (u01(rng) < Fr) {
+                    // reflect
+                    ray.direction = glm::reflect(I, N);
+                    path.color *= 1.0f / Fr;
+                }
+                else {
+                    // refract
+                    glm::vec3 refracted = glm::refract(I, N, eta);
+
+                    // total internal reflection
+                    if (glm::length(refracted) < 1e-3f) {
+                        ray.direction = glm::reflect(I, N);
+                    }
+                    else {
+                        ray.direction = refracted;
+                    }
+                    path.color *= 1.0f / (1.0f - Fr);
+                }
+
+                ray.origin = intersectionPoint + 0.001f * ray.direction;
+                path.color *= materialColor;
+                path.remainingBounces--;
+                return;
+
+            } else {
 
                 // scatter ray
                 scatterRay_diffuse(path,
