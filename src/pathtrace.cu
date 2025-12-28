@@ -223,7 +223,7 @@ __global__ void computeIntersections(
         float t;
         glm::vec3 intersect_point;
         glm::vec3 normal;
-        glm::vec2 uv;
+        glm::vec2 uv = glm::vec2(0); // only for custom meshes
         float t_min = FLT_MAX;
         int hit_mesh_index = -1;
         int hit_mesh_type = -1; // closest hit; 0 if geom, 1 if custom
@@ -261,6 +261,7 @@ __global__ void computeIntersections(
                 intersect_point = tmp_intersect;
                 normal = tmp_normal;
                 hit_mesh_type = 0;
+                outside = tmp_outside;
             }
         }
 
@@ -269,7 +270,7 @@ __global__ void computeIntersections(
 
             t = triangleIntersectionTest(tri, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, outside);
 
-            if (!outside) {
+            if (!tmp_outside) {
                 tmp_normal = -1.0f * tmp_normal;
             }
 
@@ -281,11 +282,13 @@ __global__ void computeIntersections(
                 normal = tmp_normal;
                 uv = tmp_uv;
                 hit_mesh_type = 1;
+                outside = tmp_outside;
             }
         }
 
         if (hit_mesh_type == -1)
         {
+            // no intersection
             intersections[path_index].t = -1.0f;
         }
         else if (hit_mesh_type == 0)
@@ -298,7 +301,7 @@ __global__ void computeIntersections(
         else {
             // The ray hits a custom mesh (triangle) first
             intersections[path_index].t = t_min;
-            intersections[path_index].materialId = tris[hit_mesh_index].materialId;
+            //intersections[path_index].materialId = tris[hit_mesh_index].materialId;
             intersections[path_index].surfaceNormal = normal;
         }
     }
