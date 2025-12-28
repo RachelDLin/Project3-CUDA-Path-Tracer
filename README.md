@@ -117,7 +117,8 @@ Work-efficient stream compaction can be enabled by setting the ENABLE_STREAMCOMP
 
 Testing on default cornell:
 
-| no stream compaction | work-efficient stream compaction |
+| No stream compaction	| Work-efficient stream compaction	|
+| --------- | --------- |
 | application average: 652.573 ms/frame, 1.5 FPS | application average: 365.542 ms/frame, 2.7 FPS|
 
 
