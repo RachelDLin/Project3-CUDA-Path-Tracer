@@ -108,6 +108,93 @@ __host__ __device__ float sphereIntersectionTest(
     {
         normal = -normal;
     }
-
+    
     return glm::length(r.origin - intersectionPoint);
+}
+
+__host__ __device__ float triangleIntersectionTest(
+    const Triangle& tri,
+    const Ray& r,
+    glm::vec3& intersectionPoint,
+    glm::vec3& normal,
+    glm::vec2& uv,
+    bool& outside) {
+
+    // get vtx info
+    const Vertex& v1 = tri.v1;
+    const Vertex& v2 = tri.v2;
+    const Vertex& v3 = tri.v3;
+
+    // --- Moller-Trumbore ray-triangle intersection ---
+
+    // compute face normal
+    glm::vec3 e1 = v2.position - v1.position;
+    glm::vec3 e2 = v3.position - v1.position;
+    glm::vec3 triNor = glm::normalize(glm::cross(e1, e2));
+
+    // check if ray and triangle are parallel (no intersection)
+    if (glm::dot(r.direction, triNor) < 0.00001) {
+        return -1;
+    }
+    else {
+
+        // find location where ray intersects tri plane
+        // Moller-Trumbore: r.origin + (t * r.direction) = v1.pos + u * e1 + v * e2;
+        // O + t*D = p1 + u*e1 + v*e2
+        // O - p1 = u*e1 + v*e2 - t*D
+        // [[e1 e2 -D] [u v t]^T = O - p1
+        // Cramer's rule: for system of equations Ax = b, xi = det(Ai) / det(A) where Ai is A w/ the ith column replaced by b
+        // A = [e1 e2 -D]
+        // x = [u v t]^T
+        // b = O - p1
+        glm::vec3 D = r.direction;
+        glm::vec3 O = r.origin;
+        glm::vec3 b = O - v1.position;
+
+        // solve for t
+        float detA = glm::dot(e1, glm::cross(D, e2));
+        if (fabs(detA) < 1e-8) return -1;
+
+        float detAi = glm::dot(e2, glm::cross(b, e1));
+        if (fabs(detAi) < 1e-8) return -1;
+
+        float t = detA / detAi;
+
+        // compute intersection pt
+        intersectionPoint = O + D * t;
+
+        // solve for barycentric coords
+        glm::vec3 d0 = intersectionPoint - v1.position;
+        float d00 = dot(e1, e2);
+        float d01 = dot(e1, e2);
+        float d11 = dot(e2, e2);
+        float d20 = dot(d0, e1);
+        float d21 = dot(d0, e2);
+
+        float denom = d00 * d11 - d01 * d01;
+
+        float b1 = (d11 * d20 - d01 * d21) / denom;
+        float b2 = (d00 * d21 - d01 * d20) / denom;
+        float b3 = 1.0f - b1 - b2;
+
+        // get intersection surface normal
+        normal = v1.normal * b1 + v2.normal * b2 + v3.normal * b3;
+
+        // get intersection uv
+        uv = v1.texcoord * b1 + v2.texcoord * b2 + v3.texcoord * b3;
+
+        // check side that ray hits
+        if (glm::dot(triNor, r.direction) < 0) {
+            // front face
+            outside = true;
+        }
+        else {
+            // back face
+            outside = false;
+        }
+
+        // return distance from origin to intersection pt
+        return glm::length(intersectionPoint - O);
+    }
+    return 0;
 }

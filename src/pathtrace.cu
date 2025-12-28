@@ -84,6 +84,7 @@ static Scene* hst_scene = NULL;
 static GuiDataContainer* guiData = NULL;
 static glm::vec3* dev_image = NULL;
 static Geom* dev_geoms = NULL;
+static Triangle* dev_tris = NULL;
 static Material* dev_materials = NULL;
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
@@ -97,7 +98,8 @@ void InitDataContainer(GuiDataContainer* imGuiData)
 // allocates GPU memory for: 
 //  the output image - dev_image
 //  path segments (i.e. rays from the camera) - dev_paths
-//  geometry - dev_geoms
+//  geometry - dev_geoms (procedural meshes)
+//  triangles - dev_tris
 //  materials - dev_materials
 //  intersection results - dev_intersections
 void pathtraceInit(Scene* scene)
@@ -116,6 +118,9 @@ void pathtraceInit(Scene* scene)
     cudaMalloc(&dev_geoms, scene->geoms.size() * sizeof(Geom));
     cudaMemcpy(dev_geoms, scene->geoms.data(), scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
 
+    cudaMalloc(&dev_tris, scene->triangles.size() * sizeof(Triangle));
+    cudaMemcpy(dev_tris, scene->triangles.data(), scene->triangles.size() * sizeof(Triangle), cudaMemcpyHostToDevice);
+
     cudaMalloc(&dev_materials, scene->materials.size() * sizeof(Material));
     cudaMemcpy(dev_materials, scene->materials.data(), scene->materials.size() * sizeof(Material), cudaMemcpyHostToDevice);
 
@@ -133,6 +138,7 @@ void pathtraceFree()
     cudaFree(dev_image);  // no-op if dev_image is null
     cudaFree(dev_paths);
     cudaFree(dev_geoms);
+    cudaFree(dev_tris);
     cudaFree(dev_materials);
     cudaFree(dev_intersections);
     // TODO: clean up any extra device memory you created
@@ -204,6 +210,8 @@ __global__ void computeIntersections(
     PathSegment* pathSegments,
     Geom* geoms,
     int geoms_size,
+    Triangle* tris,
+    int tris_size,
     ShadeableIntersection* intersections)
 {
     int path_index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -215,12 +223,16 @@ __global__ void computeIntersections(
         float t;
         glm::vec3 intersect_point;
         glm::vec3 normal;
+        glm::vec2 uv;
         float t_min = FLT_MAX;
-        int hit_geom_index = -1;
+        int hit_mesh_index = -1;
+        int hit_mesh_type = -1; // closest hit; 0 if geom, 1 if custom
         bool outside = true;
 
         glm::vec3 tmp_intersect;
         glm::vec3 tmp_normal;
+        glm::vec2 tmp_uv;
+        bool tmp_outside = true;
 
         // naive parse through global geoms
 
@@ -236,9 +248,8 @@ __global__ void computeIntersections(
             {
                 t = sphereIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
             }
-            // TODO: add more intersection tests here... triangle? metaball? CSG?
 
-            if (!outside) {
+            if (!tmp_outside) {
                 tmp_normal = -1.0f * tmp_normal;
             }
             // Compute the minimum t from the intersection tests to determine what
@@ -246,21 +257,48 @@ __global__ void computeIntersections(
             if (t > 0.0f && t_min > t)
             {
                 t_min = t;
-                hit_geom_index = i;
+                hit_mesh_index = i;
                 intersect_point = tmp_intersect;
                 normal = tmp_normal;
+                hit_mesh_type = 0;
             }
         }
 
-        if (hit_geom_index == -1)
+        for (int i = 0; i < tris_size; i++) {
+            Triangle& tri = tris[i];
+
+            t = triangleIntersectionTest(tri, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, outside);
+
+            if (!outside) {
+                tmp_normal = -1.0f * tmp_normal;
+            }
+
+            // compare to closest hit in geom
+            if (t > 0 && t < t_min) {
+                t_min = t;
+                hit_mesh_index = i;
+                intersect_point = tmp_intersect;
+                normal = tmp_normal;
+                uv = tmp_uv;
+                hit_mesh_type = 1;
+            }
+        }
+
+        if (hit_mesh_type == -1)
         {
             intersections[path_index].t = -1.0f;
         }
-        else
+        else if (hit_mesh_type == 0)
         {
-            // The ray hits something
+            // The ray hits a geom mesh first
             intersections[path_index].t = t_min;
-            intersections[path_index].materialId = geoms[hit_geom_index].materialid;
+            intersections[path_index].materialId = geoms[hit_mesh_index].materialId;
+            intersections[path_index].surfaceNormal = normal;
+        }
+        else {
+            // The ray hits a custom mesh (triangle) first
+            intersections[path_index].t = t_min;
+            intersections[path_index].materialId = tris[hit_mesh_index].materialId;
             intersections[path_index].surfaceNormal = normal;
         }
     }
@@ -789,6 +827,8 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_paths,
             dev_geoms,
             hst_scene->geoms.size(),
+            dev_tris,
+            hst_scene->triangles.size(),
             dev_intersections
             );
         checkCUDAError("compute intersections");
@@ -885,7 +925,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             std::swap(dev_paths, dev_paths_compact);
         #endif
 
-        printf("depth: %d, num paths: %d\n", depth, num_paths);
+        //printf("depth: %d, num paths: %d\n", depth, num_paths);
         
 
         // increment depth (num bounces made)
