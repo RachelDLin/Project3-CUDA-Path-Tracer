@@ -116,7 +116,6 @@ Path segments (rays) are sorted by material using the thrust library every bounc
 Work-efficient stream compaction can be enabled by setting the ENABLE_STREAMCOMPACTION macro to 1, causing threads for dead rays to be culled. This implementation uses parallelized downsweep and upsweep steps to quickly compute an exclusive scan.
 
 Testing on default cornell:
-|:--:|:--:|
 | no stream compaction | work-efficient stream compaction |
 | application average: 652.573 ms/frame, 1.5 FPS | application average: 365.542 ms/frame, 2.7 FPS|
 
