@@ -11,6 +11,7 @@
 
 #include <cstdio>
 #include <iostream>
+#include <cuda_runtime.h>
 
 float utilityCore::clamp(float f, float min, float max)
 {
@@ -138,4 +139,17 @@ std::istream& utilityCore::safeGetline(std::istream& is, std::string& t)
                 t += (char)c;
         }
     }
+}
+
+float3 utilityCore::glmToFloat3(const glm::vec3& v) {
+    return make_float3(v.x, v.y, v.z);
+}
+glm::vec3 utilityCore::float3ToGlm(const float3& v) {
+    return glm::vec3(v.x, v.y, v.z);
+}
+float2 utilityCore::glmToFloat2(const glm::vec2& v) {
+    return make_float2(v.x, v.y);
+}
+glm::vec2 utilityCore::float2ToGlm(const float2& v) {
+    return glm::vec2(v.x, v.y);
 }

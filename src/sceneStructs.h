@@ -12,14 +12,13 @@
 enum GeomType
 {
     SPHERE,
-    CUBE,
-    CUSTOM
+    CUBE
 };
 
 struct Vertex {
-    glm::vec3 position;
-    glm::vec3 normal;
-    glm::vec2 texcoord;
+    float3 position;
+    float3 normal;
+    float2 texcoord;
 };
 
 struct Triangle {

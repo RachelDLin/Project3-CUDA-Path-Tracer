@@ -15,6 +15,7 @@
 #include "tiny_obj_loader.h"
 
 using namespace std;
+using namespace utilityCore;
 using json = nlohmann::json;
 
 Scene::Scene(string filename)
@@ -33,6 +34,7 @@ Scene::Scene(string filename)
         exit(-1);
     }
 }
+
 
 void Scene::loadFromJSON(const std::string& jsonName)
 {
@@ -107,17 +109,20 @@ void Scene::loadFromJSON(const std::string& jsonName)
             for (auto& tri : objTris) {
                 tri.materialId = matId;
 
-                auto& v1 = tri.v1;
-                v1.position = glm::vec3(T * glm::vec4(v1.position, 1.0f));
-                v1.normal = glm::normalize(glm::vec3(N * glm::vec4(v1.normal, 0.0f)));
+                auto transformVertex = [&](Vertex& v) {
+                    glm::vec3 p = float3ToGlm(v.position);
+                    glm::vec3 n = float3ToGlm(v.normal);
 
-                auto& v2 = tri.v2;
-                v2.position = glm::vec3(T * glm::vec4(v2.position, 1.0f));
-                v2.normal = glm::normalize(glm::vec3(N * glm::vec4(v2.normal, 0.0f)));
+                    p = glm::vec3(T * glm::vec4(p, 1.0f));
+                    n = glm::normalize(glm::vec3(N * glm::vec4(n, 0.0f)));
 
-                auto& v3 = tri.v3;
-                v3.position = glm::vec3(T * glm::vec4(v3.position, 1.0f));
-                v3.normal = glm::normalize(glm::vec3(N * glm::vec4(v3.normal, 0.0f)));
+                    v.position = glmToFloat3(p);
+                    v.normal = glmToFloat3(n);
+                };
+
+                transformVertex(tri.v1);
+                transformVertex(tri.v2);
+                transformVertex(tri.v3);
                 
                 triangles.push_back(tri);
             }
@@ -241,7 +246,7 @@ void Scene::loadFromOBJ(
                 Vertex vert{};
 
                 // Position
-                vert.position = glm::vec3(
+                vert.position = make_float3(
                     attrib.vertices[3 * idx.vertex_index + 0],
                     attrib.vertices[3 * idx.vertex_index + 1],
                     attrib.vertices[3 * idx.vertex_index + 2]
@@ -249,25 +254,25 @@ void Scene::loadFromOBJ(
 
                 // Normal
                 if (idx.normal_index >= 0) {
-                    vert.normal = glm::vec3(
+                    vert.normal = make_float3(
                         attrib.normals[3 * idx.normal_index + 0],
                         attrib.normals[3 * idx.normal_index + 1],
                         attrib.normals[3 * idx.normal_index + 2]
                     );
                 }
                 else {
-                    vert.normal = glm::vec3(0.0f);
+                    vert.normal = make_float3(0.0f, 0.0f, 0.0f);
                 }
 
                 // Texcoord/UV
                 if (idx.texcoord_index >= 0) {
-                    vert.texcoord = glm::vec2(
+                    vert.texcoord = make_float2(
                         attrib.texcoords[2 * idx.texcoord_index + 0],
                         attrib.texcoords[2 * idx.texcoord_index + 1]
                     );
                 }
                 else {
-                    vert.texcoord = glm::vec2(0.0f);
+                    vert.texcoord = make_float2(0.0f, 0.0f);
                 }
 
                 vertices[v] = vert;

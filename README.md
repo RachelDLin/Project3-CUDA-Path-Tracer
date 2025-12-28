@@ -52,19 +52,19 @@ A scene is represented in a JSON file containing information on the materials, m
 
 ## Shading
 
-### Diffuse Lighting
+### Diffuse 
+
+On intersection with a diffuse surface, the ray simply accumulates its color multiplicatively.
+
+
+
+### Refractive
 
 
 
 
 
-### Refraction
-
-
-
-
-
-### Reflection/Transmission
+### Specular
 
 
 

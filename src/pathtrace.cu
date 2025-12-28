@@ -242,11 +242,11 @@ __global__ void computeIntersections(
 
             if (geom.type == CUBE)
             {
-                t = boxIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
+                t = boxIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_outside);
             }
             else if (geom.type == SPHERE)
             {
-                t = sphereIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
+                t = sphereIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_outside);
             }
 
             if (!tmp_outside) {
@@ -268,7 +268,7 @@ __global__ void computeIntersections(
         for (int i = 0; i < tris_size; i++) {
             Triangle& tri = tris[i];
 
-            t = triangleIntersectionTest(tri, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, outside);
+            t = triangleIntersectionTest(tri, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, tmp_outside);
 
             if (!tmp_outside) {
                 tmp_normal = -1.0f * tmp_normal;
@@ -301,7 +301,7 @@ __global__ void computeIntersections(
         else {
             // The ray hits a custom mesh (triangle) first
             intersections[path_index].t = t_min;
-            //intersections[path_index].materialId = tris[hit_mesh_index].materialId;
+            intersections[path_index].materialId = tris[hit_mesh_index].materialId;
             intersections[path_index].surfaceNormal = normal;
         }
     }

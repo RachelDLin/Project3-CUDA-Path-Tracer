@@ -9,6 +9,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <cuda_runtime.h>
 
 #define PI                3.1415926535897932384626422832795028841971f
 #define TWO_PI            6.2831853071795864769252867665590057683943f
@@ -32,4 +33,10 @@ namespace utilityCore
     extern glm::mat4 buildTransformationMatrix(glm::vec3 translation, glm::vec3 rotation, glm::vec3 scale);
     extern std::string convertIntToString(int number);
     extern std::istream& safeGetline(std::istream& is, std::string& t); //Thanks to http://stackoverflow.com/a/6089413
+
+    extern float3 glmToFloat3(const glm::vec3& v);
+    extern glm::vec3 float3ToGlm(const float3& v);
+
+    extern float2 glmToFloat2(const glm::vec2& v);
+    extern glm::vec2 float2ToGlm(const float2& v);
 }
