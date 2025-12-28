@@ -8,6 +8,7 @@ class Scene
 private:
     void loadFromJSON(const std::string& jsonName);
     void loadFromOBJ(const std::string& objName, std::vector<Triangle>& outTriangles);
+    void loadFromGLTF(const std::string& gltfName, std::vector<Triangle>& outTriangles);
 public:
     Scene(std::string filename);
 

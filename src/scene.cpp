@@ -11,8 +11,11 @@
 #include <string>
 #include <unordered_map>
 
+#include "tiny_gltf.h"
+
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
+
 
 using namespace std;
 using namespace utilityCore;
@@ -127,6 +130,44 @@ void Scene::loadFromJSON(const std::string& jsonName)
                 triangles.push_back(tri);
             }
             printf("Loaded %s\n", objFullPath.string().c_str());
+        }
+        else if (type == "custom_gltf") {
+            std::filesystem::path gltfRelPath = p["PATH"].get<std::filesystem::path>();
+            std::filesystem::path gltfFullPath = std::filesystem::absolute(sceneDir / gltfRelPath).lexically_normal();
+
+            std::vector<Triangle> gltfTris;
+            loadFromGLTF(gltfFullPath.string(), gltfTris);
+
+            int matId = MatNameToID[p["MATERIAL"]];
+
+            glm::vec3 trans(p["TRANS"][0], p["TRANS"][1], p["TRANS"][2]);
+            glm::vec3 rot(p["ROTAT"][0], p["ROTAT"][1], p["ROTAT"][2]);
+            glm::vec3 scale(p["SCALE"][0], p["SCALE"][1], p["SCALE"][2]);
+
+            glm::mat4 T = utilityCore::buildTransformationMatrix(trans, rot, scale);
+            glm::mat4 N = glm::inverseTranspose(T);
+
+            for (auto& tri : gltfTris) {
+                tri.materialId = matId;
+
+                auto transformVertex = [&](Vertex& v) {
+                    glm::vec3 p = float3ToGlm(v.position);
+                    glm::vec3 n = float3ToGlm(v.normal);
+
+                    p = glm::vec3(T * glm::vec4(p, 1.0f));
+                    n = glm::normalize(glm::vec3(N * glm::vec4(n, 0.0f)));
+
+                    v.position = glmToFloat3(p);
+                    v.normal = glmToFloat3(n);
+                    };
+
+                transformVertex(tri.v1);
+                transformVertex(tri.v2);
+                transformVertex(tri.v3);
+
+                triangles.push_back(tri);
+            }
+            printf("Loaded %s\n", gltfFullPath.string().c_str());
         }
         else {
             Geom newGeom;
@@ -287,3 +328,130 @@ void Scene::loadFromOBJ(
     }
 }
 
+
+
+// Convert tinygltf buffer data to float
+inline float getAccessorValueFloat(const tinygltf::Model& model, const tinygltf::Accessor& accessor, size_t index) {
+    const tinygltf::BufferView& view = model.bufferViews[accessor.bufferView];
+    const tinygltf::Buffer& buffer = model.buffers[view.buffer];
+    const unsigned char* dataPtr = buffer.data.data() + view.byteOffset + accessor.byteOffset + index * accessor.ByteStride(view);
+    float value;
+    memcpy(&value, dataPtr, sizeof(float));
+    return value;
+}
+
+// Convert tinygltf accessor to glm::vec3
+glm::vec3 getVec3(const tinygltf::Model& model, const tinygltf::Accessor& accessor, size_t index) {
+    float x = getAccessorValueFloat(model, accessor, index * 3 + 0);
+    float y = getAccessorValueFloat(model, accessor, index * 3 + 1);
+    float z = getAccessorValueFloat(model, accessor, index * 3 + 2);
+    return glm::vec3(x, y, z);
+}
+
+// Transform all vertices of a glTF mesh primitive into Triangle vector
+void loadMeshFromGLTF(const tinygltf::Mesh& mesh, const tinygltf::Model& model, glm::mat4 T, std::vector<Triangle>& outTriangles) {
+    glm::mat4 N = glm::inverseTranspose(T); // For normals
+
+    for (const auto& prim : mesh.primitives) {
+        // Access positions, normals, texcoords
+        const tinygltf::Accessor& posAccessor = model.accessors[prim.attributes.find("POSITION")->second];
+        const tinygltf::Accessor& normalAccessor = prim.attributes.count("NORMAL") ? model.accessors[prim.attributes.find("NORMAL")->second] : posAccessor; // fallback
+        const tinygltf::Accessor& uvAccessor = prim.attributes.count("TEXCOORD_0") ? model.accessors[prim.attributes.find("TEXCOORD_0")->second] : posAccessor; // fallback
+
+        const tinygltf::Accessor& indexAccessor = model.accessors[prim.indices];
+
+        for (size_t f = 0; f < indexAccessor.count; f += 3) {
+            Triangle tri;
+            tri.materialId = prim.material;
+
+            unsigned int idx[3];
+            for (int j = 0; j < 3; j++) {
+                // Extract indices
+                switch (indexAccessor.componentType) {
+                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+                    idx[j] = reinterpret_cast<const unsigned short*>(model.buffers[model.bufferViews[indexAccessor.bufferView].buffer].data.data() + indexAccessor.byteOffset)[f + j];
+                    break;
+                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:
+                    idx[j] = reinterpret_cast<const unsigned int*>(model.buffers[model.bufferViews[indexAccessor.bufferView].buffer].data.data() + indexAccessor.byteOffset)[f + j];
+                    break;
+                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
+                    idx[j] = reinterpret_cast<const unsigned char*>(model.buffers[model.bufferViews[indexAccessor.bufferView].buffer].data.data() + indexAccessor.byteOffset)[f + j];
+                    break;
+                }
+            }
+
+            Vertex vertices[3];
+            for (int j = 0; j < 3; j++) {
+                // Get data
+                glm::vec3 p = getVec3(model, posAccessor, idx[j]);
+                glm::vec3 n = getVec3(model, normalAccessor, idx[j]);
+                glm::vec2 uv = uvAccessor.count > 0 ? glm::vec2(getAccessorValueFloat(model, uvAccessor, idx[j] * 2), getAccessorValueFloat(model, uvAccessor, idx[j] * 2 + 1)) : glm::vec2(0.0f);
+
+                // Transform into world space
+                p = glm::vec3(T * glm::vec4(p, 1.0f));
+                n = glm::normalize(glm::vec3(N * glm::vec4(n, 0.0f)));
+
+                vertices[j].position = make_float3(p.x, p.y, p.z);
+                vertices[j].normal = make_float3(n.x, n.y, n.z);
+                vertices[j].texcoord = make_float2(uv.x, uv.y);
+            }
+
+            tri.v1 = vertices[0];
+            tri.v2 = vertices[1];
+            tri.v3 = vertices[2];
+
+            outTriangles.push_back(tri);
+        }
+    }
+}
+
+// Recursive node processing
+void processNode(const tinygltf::Model& model, int nodeIndex, glm::mat4 parentTransform, std::vector<Triangle>& outTriangles) {
+    const auto& node = model.nodes[nodeIndex];
+    glm::mat4 T = parentTransform * utilityCore::buildTransformationMatrix(
+        glm::vec3(node.translation.empty() ? 0.0f : node.translation[0],
+            node.translation.empty() ? 0.0f : node.translation[1],
+            node.translation.empty() ? 0.0f : node.translation[2]),
+        glm::vec3(node.rotation.empty() ? 0.0f : node.rotation[0],
+            node.rotation.empty() ? 0.0f : node.rotation[1],
+            node.rotation.empty() ? 0.0f : node.rotation[2]),
+        glm::vec3(node.scale.empty() ? 1.0f : node.scale[0],
+            node.scale.empty() ? 1.0f : node.scale[1],
+            node.scale.empty() ? 1.0f : node.scale[2])
+    );
+
+    // Process meshes
+    if (node.mesh >= 0) {
+        loadMeshFromGLTF(model.meshes[node.mesh], model, T, outTriangles);
+    }
+
+    // Recurse children
+    for (int child : node.children) {
+        processNode(model, child, T, outTriangles);
+    }
+}
+
+void Scene::loadFromGLTF(const std::string& gltfFile, std::vector<Triangle>& outTriangles) {
+    tinygltf::Model model;
+    tinygltf::TinyGLTF loader;
+    std::string err, warn;
+
+    loader.SetImageLoader(
+        [](tinygltf::Image*, int, std::string*, std::string*, int, int, const unsigned char*, int, void*) {
+            return true; // pretend image loaded
+        },
+        nullptr
+    );
+
+
+    bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, gltfFile);
+    if (!warn.empty()) std::cout << "TinyGLTF warning: " << warn << std::endl;
+    if (!err.empty()) std::cerr << "TinyGLTF error: " << err << std::endl;
+    if (!ret) throw std::runtime_error("Failed to load glTF: " + gltfFile);
+
+    for (int i = 0; i < model.scenes[model.defaultScene].nodes.size(); i++) {
+        processNode(model, model.scenes[model.defaultScene].nodes[i], glm::mat4(1.0f), outTriangles);
+    }
+
+    std::cout << "Loaded glTF " << gltfFile << " with " << outTriangles.size() << " triangles\n";
+}
