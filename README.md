@@ -18,11 +18,7 @@ Tested on: Windows 11, 12th Gen Intel(R) Core(TM) i7-12700H @ 2.30GHz, NVIDIA Ge
 
 This is a basic Monte Carlo pathtracer implemented on the GPU using CUDA kernels. A ray is cast from each pixel on the screen, and is assigned a computation thread. Each "bounce" the pathtracer checks for intersections with the scene. Every time an intersection is detected, the ray either reflects (or refracts) into a new ray or gets terminated, and color is accumulated based on the material properties of the surface intersected.
 
-
-
 Additional support is provided for refractive, specular, and diffuse shaders, as well as several common post-process filters and effects. Toggles are also provided for several optimization techniques to enhance performance.
-
-
 
 A scene is represented in a JSON file containing information on the materials, mesh objects, and camera. The camera object also contains settings for the number of frames to iterate over and the maximum number of times a ray an bounce. You will find a few example scenes under the "scenes" folder.
 
@@ -91,17 +87,6 @@ Both obj and glTF mesh loading is supported. Custom mesh objects have the TYPE "
 * [tiny\_gltf](https://github.com/syoyo/tinygltf/)
 
 
-
-
-
-### Custom Textures
-
-
-
-
-
-
-
 ## Filters \& Post Processing
 
 ### Stochastic Sampled Antialiasing
@@ -119,38 +104,6 @@ Depth of field is automatically applied based on the "APERTURE" value of the cam
 
 
 
-### Convolution Bloom
-
-
-
-
-
-### Sobel Edge Detection
-
-
-
-
-
-### Quantization
-
-
-
-
-
-### Pixelation (Point Filter)
-
-
-
-
-
-### Anisotropic Kuwahara
-
-
-
-
-
-
-
 ## Optimizations
 
 ### Memory Coalescing
@@ -158,11 +111,14 @@ Depth of field is automatically applied based on the "APERTURE" value of the cam
 Path segments (rays) are sorted by material using the thrust library every bounce to make rays hitting the same material contiguous in memory. Since the GPU fetches contiguous blocks of memory from DRAM, having threads in a warp access consecutive addresses when possible allows memory reads to be combined into fewer memory reads, enabling the GPU to more efficiently perform memory coalescing. This feature can be toggled on by setting the ENABLE_SORTBYMATERIAL macro to 1.
 
 
-
 ### Work-Efficient Stream Compaction
 
 Work-efficient stream compaction can be enabled by setting the ENABLE_STREAMCOMPACTION macro to 1, causing threads for dead rays to be culled. This implementation uses parallelized downsweep and upsweep steps to quickly compute an exclusive scan.
 
+Testing on default cornell:
+|:--:|:--:|
+| no stream compaction | work-efficient stream compaction |
+| application average: 652.573 ms/frame, 1.5 FPS | application average: 365.542 ms/frame, 2.7 FPS|
 
 
 ### Russian Roulette Path Termination
@@ -172,6 +128,4 @@ This optimization checks the color accumulated by a path so far and terminates i
 #### References
 
 [PBRTv3 13.7](https://pbr-book.org/3ed-2018/Monte_Carlo_Integration/Russian_Roulette_and_Splitting)
-
-### BVH Acceleration
 
