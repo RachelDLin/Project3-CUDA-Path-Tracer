@@ -169,7 +169,9 @@ Work-efficient stream compaction can be enabled by setting the ENABLE_STREAMCOMP
 
 This optimization checks the color accumulated by a path so far and terminates it with a higher likelihood if the color is close to black and is unlikely to contribute a perceptible difference to the final render. This feature can be enabled by setting the ENABLE_RUSSIANROULETTETERMINATION macro to 1.
 
+#### References
 
+[PBRTv3 13.7](https://pbr-book.org/3ed-2018/Monte_Carlo_Integration/Russian_Roulette_and_Splitting)
 
 ### BVH Acceleration
 
