@@ -111,7 +111,7 @@ The camera automatically applies a slight jitter to rays, helping to smooth out 
 
 | Aperture 0.0 | Aperture 0.5	| Aperture 1.0	| Aperture 1.5 |
 | --------- | --------- | --------- | --------- |
-| <img src="img/material_demo.png" width="100%"> | <img src="img/aperture1.png" width="100%"> | <img src="img/aperture2.png" width="100%"> | <img src="img/aperture3.png" width="100%"> |
+| <img src="img/aperture0.png" width="100%"> | <img src="img/aperture1.png" width="100%"> | <img src="img/aperture2.png" width="100%"> | <img src="img/aperture3.png" width="100%"> |
 
 Depth of field is automatically applied based on the "APERTURE" value of the camera in the scene JSON. Rays are jittered within the lens aperture to achieve this effect.
 
