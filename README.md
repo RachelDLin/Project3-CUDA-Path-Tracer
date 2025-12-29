@@ -16,6 +16,8 @@ Tested on: Windows 11, 12th Gen Intel(R) Core(TM) i7-12700H @ 2.30GHz, NVIDIA Ge
 
 ## Overview
 
+<img src="img/material_demo.png" width="50%">
+
 This is a basic Monte Carlo pathtracer implemented on the GPU using CUDA kernels. A ray is cast from each pixel on the screen, and is assigned a computation thread. Each "bounce" the pathtracer checks for intersections with the scene. Every time an intersection is detected, the ray either reflects (or refracts) into a new ray or gets terminated, and color is accumulated based on the material properties of the surface intersected.
 
 Additional support is provided for refractive, specular, and diffuse shaders, as well as several common post-process filters and effects. Toggles are also provided for several optimization techniques to enhance performance.
@@ -50,11 +52,17 @@ A scene is represented in a JSON file containing information on the materials, m
 
 ### Diffuse 
 
+<img src="img/cornell_diffuse.png" width="40%">
+
 On intersection with a diffuse surface, the ray simply accumulates its color multiplicatively.
 
 
 
 ### Refractive
+
+<img src="img/cornell_refract.png" width="30%">
+<img src="img/cornell_refract2.png" width="30%">
+<img src="img/cornell_refract3.png" width="30%">
 
 Refractive materials use Snell's Law to compute the refracted ray angle (instead of the reflected ray). As it exits the object (intersecting with a backface), the ray either refracts on its way out, or it reflects back into the model, resulting in total internal reflection. The probability of reflection vs. refraction is calculated using the Fresnel-Schlick approximation.
 
@@ -66,6 +74,10 @@ Refractive materials use Snell's Law to compute the refracted ray angle (instead
 
 
 ### Specular
+
+| Roughness 0	| Roughness 0.25	| Roughness 0.5	| Roughness 0.75	|
+| --------- | --------- | --------- | --------- |
+| <img src="img/cornell_spec0.png" width="20%"> | <img src="img/cornell_spec1.png" width="20%"> | <img src="img/cornell_spec2.png" width="20%"> | <img src="img/cornell_spec3.png" width="20%"> |
 
 Specular materials are computed using the Cook-Torrance microfacet model. This implementation involves using the GGX distribution for computing microfacet self-shadowing and the Fresnel-Schlick approximation for reflections.
 
@@ -115,7 +127,7 @@ Path segments (rays) are sorted by material using the thrust library every bounc
 
 Work-efficient stream compaction can be enabled by setting the ENABLE_STREAMCOMPACTION macro to 1, causing threads for dead rays to be culled. This implementation uses parallelized downsweep and upsweep steps to quickly compute an exclusive scan.
 
-Testing on default cornell:
+Testing on default cornell_diffuse.png:
 
 | No stream compaction	| Work-efficient stream compaction	|
 | --------- | --------- |
