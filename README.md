@@ -92,7 +92,7 @@ Specular materials are computed using the Cook-Torrance microfacet model. This i
 
 ### Custom Meshes
 
-<img src="img/dango.png" width="100%">
+<img src="img/dango.png" width="40%">
 
 Both obj and glTF mesh loading is supported. Custom mesh objects have the TYPE "custom_gltf" or "custom_obj" in the scene JSON and have a PATH entry to store the location of the glTF/obj file. Note that glTF textures are not supported, with the intention being that textures are assigned via material in the scene JSON.
 
