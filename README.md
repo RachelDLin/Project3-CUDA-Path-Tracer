@@ -37,15 +37,6 @@ A scene is represented in a JSON file containing information on the materials, m
 * Microfacet roughness
 * Physically-based depth of field
 * OBJ Mesh Loading
-* TODO: glTF Mesh Loading
-* TODO: BVH acceleration
-* TODO: Texture mapping
-* TODO: Bump mapping
-* TODO: Post-process bloom
-* TODO: Post-process edge detection
-* TODO: Post-process quantization
-* TODO: Post-process pixelation
-* TODO: Post-process anisotropic kuwahara filter
 
 
 
@@ -94,12 +85,11 @@ Specular materials are computed using the Cook-Torrance microfacet model. This i
 
 <img src="img/dango.png" width="40%">
 
-Both obj and glTF mesh loading is supported. Custom mesh objects have the TYPE "custom_gltf" or "custom_obj" in the scene JSON and have a PATH entry to store the location of the glTF/obj file. Note that glTF textures are not supported, with the intention being that textures are assigned via material in the scene JSON.
+OBJ mesh loading is supported, with uvs being stored properly, but glTF loading has bugs. Texture sampling has not yet been implemented but will be soon. Custom mesh objects have the TYPE "custom_gltf" or "custom_obj" in the scene JSON and have a PATH entry to store the location of the glTF/obj file. Note that glTF textures are not supported, with the intention being that textures are assigned via material in the scene JSON.
 
 #### External Libraries
 
 * [tiny\_obj](https://github.com/syoyo/tinyobjloader)
-* [tiny\_gltf](https://github.com/syoyo/tinygltf/)
 
 
 ## Filters \& Post Processing
@@ -147,9 +137,24 @@ Testing on default cornell_diffuse.png:
 
 ### Russian Roulette Path Termination
 
+| Russian roulette path termination disabled	| Russian roulette path termination enabled |
+| --------- | --------- |
+| application average: 198.513 ms/frame, 5.3 FPS | application average: 131.217 ms/frame, 7.4 FPS|
+
 This optimization checks the color accumulated by a path so far and terminates it with a higher likelihood if the color is close to black and is unlikely to contribute a perceptible difference to the final render. This feature can be enabled by setting the ENABLE_RUSSIANROULETTETERMINATION macro to 1.
 
 #### References
 
 [PBRTv3 13.7](https://pbr-book.org/3ed-2018/Monte_Carlo_Integration/Russian_Roulette_and_Splitting)
 
+
+## TODO:
+* debug glTF Mesh Loading
+* BVH acceleration
+* Texture mapping
+* Bump mapping
+* Post-process bloom
+* Post-process edge detection
+* Post-process quantization
+* Post-process pixelation
+* Post-process anisotropic kuwahara filter
