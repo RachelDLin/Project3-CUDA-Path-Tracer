@@ -15,6 +15,7 @@
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
+#include <glm/gtc/matrix_transform.hpp>
 
 
 using namespace std;
@@ -57,6 +58,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
         {
             const auto& col = p["RGB"];
             newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+            newMaterial.roughness = 1.0;
         }
         else if (p["TYPE"] == "Emitting")
         {
@@ -330,7 +332,7 @@ void Scene::loadFromOBJ(
 
 
 
-// Convert tinygltf buffer data to float
+// --- Helper to get float from accessor ---
 inline float getAccessorValueFloat(const tinygltf::Model& model, const tinygltf::Accessor& accessor, size_t index) {
     const tinygltf::BufferView& view = model.bufferViews[accessor.bufferView];
     const tinygltf::Buffer& buffer = model.buffers[view.buffer];
@@ -340,23 +342,29 @@ inline float getAccessorValueFloat(const tinygltf::Model& model, const tinygltf:
     return value;
 }
 
-// Convert tinygltf accessor to glm::vec3
+// --- Helper to get glm::vec3 from accessor ---
 glm::vec3 getVec3(const tinygltf::Model& model, const tinygltf::Accessor& accessor, size_t index) {
-    float x = getAccessorValueFloat(model, accessor, index * 3 + 0);
-    float y = getAccessorValueFloat(model, accessor, index * 3 + 1);
-    float z = getAccessorValueFloat(model, accessor, index * 3 + 2);
+    float x = getAccessorValueFloat(model, accessor, index + 0);
+    float y = getAccessorValueFloat(model, accessor, index + 1);
+    float z = getAccessorValueFloat(model, accessor, index + 2);
     return glm::vec3(x, y, z);
 }
 
-// Transform all vertices of a glTF mesh primitive into Triangle vector
-void loadMeshFromGLTF(const tinygltf::Mesh& mesh, const tinygltf::Model& model, glm::mat4 T, std::vector<Triangle>& outTriangles) {
-    glm::mat4 N = glm::inverseTranspose(T); // For normals
+// --- Load a mesh primitive into triangles ---
+void loadMeshFromGLTF(const tinygltf::Mesh& mesh, const tinygltf::Model& model, glm::mat4 worldTransform, std::vector<Triangle>& outTriangles) {
+    glm::mat4 normalMatrix = glm::inverseTranspose(worldTransform);
 
     for (const auto& prim : mesh.primitives) {
-        // Access positions, normals, texcoords
-        const tinygltf::Accessor& posAccessor = model.accessors[prim.attributes.find("POSITION")->second];
-        const tinygltf::Accessor& normalAccessor = prim.attributes.count("NORMAL") ? model.accessors[prim.attributes.find("NORMAL")->second] : posAccessor; // fallback
-        const tinygltf::Accessor& uvAccessor = prim.attributes.count("TEXCOORD_0") ? model.accessors[prim.attributes.find("TEXCOORD_0")->second] : posAccessor; // fallback
+        // Accessors
+        auto posIt = prim.attributes.find("POSITION");
+        if (posIt == prim.attributes.end()) continue;
+        const tinygltf::Accessor& posAccessor = model.accessors[posIt->second];
+
+        const tinygltf::Accessor* normalAccessor = nullptr;
+        if (prim.attributes.count("NORMAL")) normalAccessor = &model.accessors.at(prim.attributes.find("NORMAL")->second);
+
+        const tinygltf::Accessor* uvAccessor = nullptr;
+        if (prim.attributes.count("TEXCOORD_0")) uvAccessor = &model.accessors.at(prim.attributes.find("TEXCOORD_0")->second);
 
         const tinygltf::Accessor& indexAccessor = model.accessors[prim.indices];
 
@@ -366,7 +374,6 @@ void loadMeshFromGLTF(const tinygltf::Mesh& mesh, const tinygltf::Model& model, 
 
             unsigned int idx[3];
             for (int j = 0; j < 3; j++) {
-                // Extract indices
                 switch (indexAccessor.componentType) {
                 case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
                     idx[j] = reinterpret_cast<const unsigned short*>(model.buffers[model.bufferViews[indexAccessor.bufferView].buffer].data.data() + indexAccessor.byteOffset)[f + j];
@@ -377,81 +384,106 @@ void loadMeshFromGLTF(const tinygltf::Mesh& mesh, const tinygltf::Model& model, 
                 case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
                     idx[j] = reinterpret_cast<const unsigned char*>(model.buffers[model.bufferViews[indexAccessor.bufferView].buffer].data.data() + indexAccessor.byteOffset)[f + j];
                     break;
+                default:
+                    throw std::runtime_error("Unsupported index type in GLTF");
                 }
             }
 
             Vertex vertices[3];
-            for (int j = 0; j < 3; j++) {
-                // Get data
-                glm::vec3 p = getVec3(model, posAccessor, idx[j]);
-                glm::vec3 n = getVec3(model, normalAccessor, idx[j]);
-                glm::vec2 uv = uvAccessor.count > 0 ? glm::vec2(getAccessorValueFloat(model, uvAccessor, idx[j] * 2), getAccessorValueFloat(model, uvAccessor, idx[j] * 2 + 1)) : glm::vec2(0.0f);
+            bool hasNormal = normalAccessor != nullptr;
 
-                // Transform into world space
-                p = glm::vec3(T * glm::vec4(p, 1.0f));
-                n = glm::normalize(glm::vec3(N * glm::vec4(n, 0.0f)));
+            for (int j = 0; j < 3; j++) {
+                // Positions
+                glm::vec3 p = getVec3(model, posAccessor, idx[j]);
+
+                // Normals
+                glm::vec3 n(0.0f);
+                if (hasNormal) n = getVec3(model, *normalAccessor, idx[j]);
+
+                // UVs
+                glm::vec2 uv(0.0f);
+                if (uvAccessor && uvAccessor->count > 0) {
+                    uv.x = getAccessorValueFloat(model, *uvAccessor, idx[j] * 2 + 0);
+                    uv.y = getAccessorValueFloat(model, *uvAccessor, idx[j] * 2 + 1);
+                }
+
+                // Transform to world space
+                p = glm::vec3(worldTransform * glm::vec4(p, 1.0f));
+                if (hasNormal) n = glm::normalize(glm::vec3(normalMatrix * glm::vec4(n, 0.0f)));
 
                 vertices[j].position = make_float3(p.x, p.y, p.z);
                 vertices[j].normal = make_float3(n.x, n.y, n.z);
                 vertices[j].texcoord = make_float2(uv.x, uv.y);
             }
 
+            // Compute normals if missing
+            if (!hasNormal) {
+                glm::vec3 computedNormal = glm::normalize(glm::cross(
+                    float3ToGlm(vertices[1].position) - float3ToGlm(vertices[0].position),
+                    float3ToGlm(vertices[2].position) - float3ToGlm(vertices[0].position)
+                ));
+                for (int j = 0; j < 3; j++) vertices[j].normal = glmToFloat3(computedNormal);
+            }
+
+            // Fix winding
+            glm::vec3 faceNormal = glm::cross(
+                float3ToGlm(vertices[1].position) - float3ToGlm(vertices[0].position),
+                float3ToGlm(vertices[2].position) - float3ToGlm(vertices[0].position)
+            );
+            if (glm::dot(faceNormal, float3ToGlm(vertices[0].normal)) < 0.0f) std::swap(vertices[1], vertices[2]);
+
             tri.v1 = vertices[0];
             tri.v2 = vertices[1];
             tri.v3 = vertices[2];
-
             outTriangles.push_back(tri);
         }
     }
 }
 
-// Recursive node processing
+// --- Recursively process nodes ---
 void processNode(const tinygltf::Model& model, int nodeIndex, glm::mat4 parentTransform, std::vector<Triangle>& outTriangles) {
     const auto& node = model.nodes[nodeIndex];
-    glm::mat4 T = parentTransform * utilityCore::buildTransformationMatrix(
-        glm::vec3(node.translation.empty() ? 0.0f : node.translation[0],
-            node.translation.empty() ? 0.0f : node.translation[1],
-            node.translation.empty() ? 0.0f : node.translation[2]),
-        glm::vec3(node.rotation.empty() ? 0.0f : node.rotation[0],
-            node.rotation.empty() ? 0.0f : node.rotation[1],
-            node.rotation.empty() ? 0.0f : node.rotation[2]),
-        glm::vec3(node.scale.empty() ? 1.0f : node.scale[0],
-            node.scale.empty() ? 1.0f : node.scale[1],
-            node.scale.empty() ? 1.0f : node.scale[2])
-    );
 
-    // Process meshes
-    if (node.mesh >= 0) {
-        loadMeshFromGLTF(model.meshes[node.mesh], model, T, outTriangles);
-    }
+    glm::vec3 translation(0.0f);
+    if (!node.translation.empty()) translation = glm::vec3(node.translation[0], node.translation[1], node.translation[2]);
 
-    // Recurse children
-    for (int child : node.children) {
-        processNode(model, child, T, outTriangles);
-    }
+    glm::vec3 scale(1.0f);
+    if (!node.scale.empty()) scale = glm::vec3(node.scale[0], node.scale[1], node.scale[2]);
+
+    glm::quat rotation(1.0f, 0.0f, 0.0f, 0.0f);
+    if (!node.rotation.empty()) rotation = glm::quat(node.rotation[3], node.rotation[0], node.rotation[1], node.rotation[2]);
+
+    glm::mat4 localTransform = glm::translate(glm::mat4(1.0f), translation) *
+        glm::mat4_cast(rotation) *
+        glm::scale(glm::mat4(1.0f), scale);
+
+    glm::mat4 worldTransform = parentTransform * localTransform;
+
+    // Optional: adjust glTF coordinate system to your scene
+    glm::mat4 gltfToScene = glm::rotate(glm::mat4(1.0f), -PI / 2.0f, glm::vec3(1, 0, 0));
+    worldTransform = gltfToScene * worldTransform;
+
+    if (node.mesh >= 0) loadMeshFromGLTF(model.meshes[node.mesh], model, worldTransform, outTriangles);
+
+    for (int child : node.children)
+        processNode(model, child, worldTransform, outTriangles);
 }
 
+// --- Load GLTF file ---
 void Scene::loadFromGLTF(const std::string& gltfFile, std::vector<Triangle>& outTriangles) {
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
     std::string err, warn;
 
-    loader.SetImageLoader(
-        [](tinygltf::Image*, int, std::string*, std::string*, int, int, const unsigned char*, int, void*) {
-            return true; // pretend image loaded
-        },
-        nullptr
-    );
-
+    loader.SetImageLoader([](tinygltf::Image*, int, std::string*, std::string*, int, int, const unsigned char*, int, void*) { return true; }, nullptr);
 
     bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, gltfFile);
     if (!warn.empty()) std::cout << "TinyGLTF warning: " << warn << std::endl;
     if (!err.empty()) std::cerr << "TinyGLTF error: " << err << std::endl;
     if (!ret) throw std::runtime_error("Failed to load glTF: " + gltfFile);
 
-    for (int i = 0; i < model.scenes[model.defaultScene].nodes.size(); i++) {
-        processNode(model, model.scenes[model.defaultScene].nodes[i], glm::mat4(1.0f), outTriangles);
-    }
+    for (int nodeIdx : model.scenes[model.defaultScene].nodes)
+        processNode(model, nodeIdx, glm::mat4(1.0f), outTriangles);
 
     std::cout << "Loaded glTF " << gltfFile << " with " << outTriangles.size() << " triangles\n";
 }

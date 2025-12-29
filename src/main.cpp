@@ -24,6 +24,17 @@
 #include <sstream>
 #include <string>
 
+#include <GL/gl.h>
+#include <iostream>
+
+void PrintActiveGPU() {
+    const GLubyte* renderer = glGetString(GL_RENDERER);
+    const GLubyte* vendor = glGetString(GL_VENDOR);
+    std::cout << "GPU Renderer: " << renderer << std::endl;
+    std::cout << "GPU Vendor: " << vendor << std::endl;
+}
+
+
 static std::string startTimeString;
 
 // For camera controls
@@ -133,6 +144,8 @@ GLuint initShader()
     {
         glUniform1i(location, 0);
     }
+
+    PrintActiveGPU();
 
     return program;
 }
