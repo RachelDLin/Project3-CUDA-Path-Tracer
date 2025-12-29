@@ -36,7 +36,8 @@ A scene is represented in a JSON file containing information on the materials, m
 * Refractive materials
 * Microfacet roughness
 * Physically-based depth of field
-* TODO: Mesh loading (obj, gltf)
+* OBJ Mesh Loading
+* TODO: glTF Mesh Loading
 * TODO: BVH acceleration
 * TODO: Texture mapping
 * TODO: Bump mapping
@@ -108,6 +109,10 @@ The camera automatically applies a slight jitter to rays, helping to smooth out 
 
 ### Physically-Based Depth of Field
 
+| Aperture 0.0 | Aperture 0.5	| Aperture 1.0	| Aperture 1.5 |
+| --------- | --------- | --------- | --------- |
+| <img src="img/material_demo.png" width="100%"> | <img src="img/aperture1.png" width="100%"> | <img src="img/aperture2.png" width="100%"> | <img src="img/aperture3.png" width="100%"> |
+
 Depth of field is automatically applied based on the "APERTURE" value of the camera in the scene JSON. Rays are jittered within the lens aperture to achieve this effect.
 
 #### References
@@ -120,6 +125,10 @@ Depth of field is automatically applied based on the "APERTURE" value of the cam
 
 ### Memory Coalescing
 
+| Sorting disabled	| Sorting enabled |
+| --------- | --------- |
+| application average: 324.549 ms/frame, 3.4 FPS | application average: 462.751 ms/frame, 2.1 FPS|
+
 Path segments (rays) are sorted by material using the thrust library every bounce to make rays hitting the same material contiguous in memory. Since the GPU fetches contiguous blocks of memory from DRAM, having threads in a warp access consecutive addresses when possible allows memory reads to be combined into fewer memory reads, enabling the GPU to more efficiently perform memory coalescing. This feature can be toggled on by setting the ENABLE_SORTBYMATERIAL macro to 1.
 
 
@@ -131,7 +140,7 @@ Testing on default cornell_diffuse.png:
 
 | No stream compaction	| Work-efficient stream compaction	|
 | --------- | --------- |
-| application average: 652.573 ms/frame, 1.5 FPS | application average: 365.542 ms/frame, 2.7 FPS|
+| application average: 242.312 ms/frame, 4.1 FPS | application average: 136.534 ms/frame, 7.3 FPS|
 
 
 ### Russian Roulette Path Termination
