@@ -59,10 +59,7 @@ On intersection with a diffuse surface, the ray simply accumulates its color mul
 
 
 ### Refractive
-
-<img src="img/cornell_refract.png" width="30%">
-<img src="img/cornell_refract2.png" width="30%">
-<img src="img/cornell_refract3.png" width="30%">
+| <img src="img/cornell_refract.png" width="100%"> | <img src="img/cornell_refract2.png" width="100%"> | <img src="img/cornell_refract3.png" width="100%"> |
 
 Refractive materials use Snell's Law to compute the refracted ray angle (instead of the reflected ray). As it exits the object (intersecting with a backface), the ray either refracts on its way out, or it reflects back into the model, resulting in total internal reflection. The probability of reflection vs. refraction is calculated using the Fresnel-Schlick approximation.
 
@@ -77,7 +74,7 @@ Refractive materials use Snell's Law to compute the refracted ray angle (instead
 
 | Roughness 0	| Roughness 0.25	| Roughness 0.5	| Roughness 0.75	|
 | --------- | --------- | --------- | --------- |
-| <img src="img/cornell_spec0.png" width="20%"> | <img src="img/cornell_spec1.png" width="20%"> | <img src="img/cornell_spec2.png" width="20%"> | <img src="img/cornell_spec3.png" width="20%"> |
+| <img src="img/cornell_spec0.png" width="100%"> | <img src="img/cornell_spec1.png" width="100%"> | <img src="img/cornell_spec2.png" width="100%"> | <img src="img/cornell_spec3.png" width="100%"> |
 
 Specular materials are computed using the Cook-Torrance microfacet model. This implementation involves using the GGX distribution for computing microfacet self-shadowing and the Fresnel-Schlick approximation for reflections.
 
