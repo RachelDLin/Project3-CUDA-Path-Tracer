@@ -37,15 +37,6 @@ A scene is represented in a JSON file containing information on the materials, m
 * Microfacet roughness
 * Physically-based depth of field
 * OBJ Mesh Loading
-* TODO: glTF Mesh Loading
-* TODO: BVH acceleration
-* TODO: Texture mapping
-* TODO: Bump mapping
-* TODO: Post-process bloom
-* TODO: Post-process edge detection
-* TODO: Post-process quantization
-* TODO: Post-process pixelation
-* TODO: Post-process anisotropic kuwahara filter
 
 
 
@@ -61,9 +52,9 @@ On intersection with a diffuse surface, the ray simply accumulates its color mul
 
 ### Refractive
 
-| ior 1.0	| Roughness 1.25	| Roughness 1.5	|
+| ior 1.0	| ior 1.25	| ior 1.5	| ior 1.75	|
 | --------- | --------- | --------- |
-| <img src="img/cornell_refract.png" width="100%"> | <img src="img/cornell_refract2.png" width="100%"> | <img src="img/cornell_refract3.png" width="100%"> |
+| <img src="img/cornell_refract1.png" width="100%"> | <img src="img/cornell_refract2.png" width="100%"> | <img src="img/cornell_refract3.png" width="100%"> | <img src="img/cornell_refract4.png" width="100%"> |
 
 Refractive materials use Snell's Law to compute the refracted ray angle (instead of the reflected ray). As it exits the object (intersecting with a backface), the ray either refracts on its way out, or it reflects back into the model, resulting in total internal reflection. The probability of reflection vs. refraction is calculated using the Fresnel-Schlick approximation.
 
@@ -92,12 +83,13 @@ Specular materials are computed using the Cook-Torrance microfacet model. This i
 
 ### Custom Meshes
 
-Both obj and glTF mesh loading is supported. Custom mesh objects have the TYPE "custom_gltf" or "custom_obj" in the scene JSON and have a PATH entry to store the location of the glTF/obj file. Note that glTF textures are not supported, with the intention being that textures are assigned via material in the scene JSON.
+<img src="img/dango.png" width="40%">
+
+OBJ mesh loading is supported, with uvs being stored properly, but glTF loading has bugs. Texture sampling has not yet been implemented but will be soon. Custom mesh objects have the TYPE "custom_gltf" or "custom_obj" in the scene JSON and have a PATH entry to store the location of the glTF/obj file. Note that glTF textures are not supported, with the intention being that textures are assigned via material in the scene JSON.
 
 #### External Libraries
 
 * [tiny\_obj](https://github.com/syoyo/tinyobjloader)
-* [tiny\_gltf](https://github.com/syoyo/tinygltf/)
 
 
 ## Filters \& Post Processing
@@ -111,7 +103,7 @@ The camera automatically applies a slight jitter to rays, helping to smooth out 
 
 | Aperture 0.0 | Aperture 0.5	| Aperture 1.0	| Aperture 1.5 |
 | --------- | --------- | --------- | --------- |
-| <img src="img/material_demo.png" width="100%"> | <img src="img/aperture1.png" width="100%"> | <img src="img/aperture2.png" width="100%"> | <img src="img/aperture3.png" width="100%"> |
+| <img src="img/aperture0.png" width="100%"> | <img src="img/aperture1.png" width="100%"> | <img src="img/aperture2.png" width="100%"> | <img src="img/aperture3.png" width="100%"> |
 
 Depth of field is automatically applied based on the "APERTURE" value of the camera in the scene JSON. Rays are jittered within the lens aperture to achieve this effect.
 
@@ -145,9 +137,24 @@ Testing on default cornell_diffuse.png:
 
 ### Russian Roulette Path Termination
 
+| Russian roulette path termination disabled	| Russian roulette path termination enabled |
+| --------- | --------- |
+| application average: 198.513 ms/frame, 5.3 FPS | application average: 131.217 ms/frame, 7.4 FPS|
+
 This optimization checks the color accumulated by a path so far and terminates it with a higher likelihood if the color is close to black and is unlikely to contribute a perceptible difference to the final render. This feature can be enabled by setting the ENABLE_RUSSIANROULETTETERMINATION macro to 1.
 
 #### References
 
 [PBRTv3 13.7](https://pbr-book.org/3ed-2018/Monte_Carlo_Integration/Russian_Roulette_and_Splitting)
 
+
+## TODO:
+* debug glTF Mesh Loading
+* BVH acceleration
+* Texture mapping
+* Bump mapping
+* Post-process bloom
+* Post-process edge detection
+* Post-process quantization
+* Post-process pixelation
+* Post-process anisotropic kuwahara filter
